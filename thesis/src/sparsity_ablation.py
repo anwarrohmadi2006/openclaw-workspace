@@ -8,7 +8,7 @@ import time
 import tracemalloc
 from .braid_word import row_to_braid_word
 from .theta_eval import theta_eval, compute_theta_features
-from .sparse_handler import filter_sparse_features, compute_sparsity
+from .sparse_handler import filter_sparse_features, compute_sparsity, apply_sparse_filter
 
 
 def inject_sparsity(X, target_sparsity, random_state=42):
@@ -57,7 +57,7 @@ def ablation_sparsity(X, feature_order, sparsity_levels=None):
         print(f"\n--- Sparsity: {sparsity:.0%} ---")
         X_sparse = inject_sparsity(X, sparsity)
 
-        # Without sparse filtering
+        # ── WITHOUT sparse filtering ───────────────────────────────────
         tracemalloc.start()
         start = time.time()
         bws = []
@@ -68,7 +68,6 @@ def ablation_sparsity(X, feature_order, sparsity_levels=None):
         _, mem_no_filter = tracemalloc.get_traced_memory()
         tracemalloc.stop()
 
-        # Theta values
         thetas = [theta_eval(bw, 0.5) for bw in bws]
 
         results.append({
@@ -76,14 +75,29 @@ def ablation_sparsity(X, feature_order, sparsity_levels=None):
             "filter": "none",
             "time_s": time_no_filter,
             "memory_mb": mem_no_filter / 1024 / 1024,
-            "theta_mean": np.mean(thetas),
-            "theta_std": np.std(thetas),
+            "theta_mean": float(np.mean(thetas)),
+            "theta_std": float(np.std(thetas)),
             "n_features": X_sparse.shape[1],
         })
 
-        # With sparse filtering
-        X_filtered, kept = filter_sparse_features(X_sparse, threshold=0.9, verbose=False)
-        adj_order = np.array([i for i in range(X_filtered.shape[1])])
+        # ── WITH sparse filtering ──────────────────────────────────────
+        # Use apply_sparse_filter for correct feature_order remapping
+        X_filtered, adj_order, kept = apply_sparse_filter(
+            X_sparse, feature_order, threshold=0.9
+        )
+
+        if X_filtered.shape[1] == 0 or len(adj_order) == 0:
+            print(f"  Filtered: no features remaining at sparsity {sparsity:.0%}")
+            results.append({
+                "sparsity": sparsity,
+                "filter": "sparse_filter",
+                "time_s": 0.0,
+                "memory_mb": 0.0,
+                "theta_mean": 0.0,
+                "theta_std": 0.0,
+                "n_features": 0,
+            })
+            continue
 
         tracemalloc.start()
         start = time.time()
@@ -102,14 +116,14 @@ def ablation_sparsity(X, feature_order, sparsity_levels=None):
             "filter": "sparse_filter",
             "time_s": time_filtered,
             "memory_mb": mem_filtered / 1024 / 1024,
-            "theta_mean": np.mean(thetas_filtered) if thetas_filtered else 0,
-            "theta_std": np.std(thetas_filtered) if thetas_filtered else 0,
+            "theta_mean": float(np.mean(thetas_filtered)) if thetas_filtered else 0.0,
+            "theta_std": float(np.std(thetas_filtered)) if thetas_filtered else 0.0,
             "n_features": X_filtered.shape[1],
         })
 
         print(f"  No filter: {time_no_filter:.3f}s, {mem_no_filter/1024/1024:.2f}MB, "
-              f"θ mean={np.mean(thetas):.2f}")
+              f"theta_mean={np.mean(thetas):.4f}")
         print(f"  Filtered:  {time_filtered:.3f}s, {mem_filtered/1024/1024:.2f}MB, "
-              f"θ mean={np.mean(thetas_filtered):.2f}" if thetas_filtered else "  Filtered: no features left")
+              f"theta_mean={np.mean(thetas_filtered):.4f}, n_features={X_filtered.shape[1]}")
 
     return results

@@ -84,24 +84,25 @@ def compute_recall_at_k(model, X_test, y_test, k=10, metric="cosine"):
 
     Uses model leaf predictions as embedding vectors, then finds
     k nearest neighbors by cosine similarity.
+
+    Note: NearestNeighbors is fitted with n_neighbors=k+1 to include self,
+    then we skip index position 0 (always self) when computing recall.
     """
     # Get leaf indices as embedding
     leaf_embed = model.predict(X_test, pred_leaf=True)
     if leaf_embed.ndim == 1:
         leaf_embed = leaf_embed.reshape(-1, 1)
 
-    # Fit nearest neighbors
+    # Fit nearest neighbors with k+1 to account for self
     nn = NearestNeighbors(n_neighbors=k + 1, metric=metric, algorithm="brute")
     nn.fit(leaf_embed)
     distances, indices = nn.kneighbors(leaf_embed)
 
-    # Compute recall@k (excluding self)
+    # Compute recall@k: skip position 0 (self) by slicing, NOT by value filtering
     recalls = []
     for i in range(len(X_test)):
-        neighbors = indices[i]
-        # Remove self
-        neighbors = neighbors[neighbors != i][:k]
-        # Count same-class neighbors
+        # indices[i][0] is always self — skip by position, not by value
+        neighbors = indices[i][1:k + 1]
         same_class = np.sum(y_test[neighbors] == y_test[i])
         recalls.append(same_class / k)
 
@@ -131,9 +132,9 @@ def evaluate_model(X_train, y_train, X_test, y_test, n_classes, model_name="mode
         "trained_model": model,
     }
 
-    print(f"  Accuracy: {result['accuracy']:.4f}")
-    print(f"  F1-macro: {result['f1_macro']:.4f}")
-    print(f"  AUC-ROC:  {result['auc_roc']:.4f}")
+    print(f"  Accuracy:  {result['accuracy']:.4f}")
+    print(f"  F1-macro:  {result['f1_macro']:.4f}")
+    print(f"  AUC-ROC:   {result['auc_roc']:.4f}")
     print(f"  Recall@10: {result['recall_at_10']:.4f}")
     print(f"  Train time: {result['train_time_s']:.2f}s")
 

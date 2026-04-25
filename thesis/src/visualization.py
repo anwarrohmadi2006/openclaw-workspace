@@ -25,7 +25,7 @@ def setup_plot_style():
 
 def plot_accuracy_comparison(results_list, output_dir):
     """
-    Figure 1: Bar chart — Accuracy/F1/AUC baseline vs all Θ variations.
+    Figure 1: Bar chart — Accuracy/F1/AUC baseline vs all Theta variations.
     """
     setup_plot_style()
     df = pd.DataFrame([
@@ -41,7 +41,7 @@ def plot_accuracy_comparison(results_list, output_dir):
         ax.set_ylim(0, 1)
         ax.tick_params(axis="x", rotation=45)
         for bar, val in zip(bars, df[metric]):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
                     f"{val:.3f}", ha="center", va="bottom", fontsize=9)
 
     plt.tight_layout()
@@ -65,7 +65,8 @@ def plot_confusion_matrix(cm, classes, model_name, output_dir):
     ax.set_ylabel("True")
     ax.set_title(f"Confusion Matrix — {model_name}")
 
-    path = Path(output_dir) / "plots" / f"confusion_matrix_{model_name.replace(' ', '_')}.png"
+    safe_name = model_name.replace(" ", "_").replace("+", "plus")
+    path = Path(output_dir) / "plots" / f"confusion_matrix_{safe_name}.png"
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path)
     plt.close(fig)
@@ -113,18 +114,30 @@ def plot_scaling_curve(efficiency_results, output_dir):
 
 def plot_theta_distribution(theta_matrix, y, labels, output_dir):
     """
-    Figure 4: Box plot — Θ(t=0.5) distribution per label class.
+    Figure 4: Box plot — Theta(t=0.5) distribution per label class.
     """
     setup_plot_style()
+
+    # Safe label resolution: cast y[i] to int to avoid numpy int64 indexing issues
+    # and guard against None labels
     data = []
     for i in range(len(y)):
-        data.append({"Class": labels[y[i]] if labels is not None else str(y[i]),
-                      "Θ(t=0.5)": theta_matrix[i, 0]})
+        idx = int(y[i])
+        if labels is not None and idx < len(labels):
+            class_name = str(labels[idx])
+        else:
+            class_name = str(idx)
+        data.append({
+            "Class": class_name,
+            "Theta(t=0.5)": float(theta_matrix[i, 0]),
+        })
     df = pd.DataFrame(data)
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    sns.boxplot(data=df, x="Class", y="Θ(t=0.5)", ax=ax, palette="Set2")
-    ax.set_title("Distribution of Θ(t=0.5) per Class")
+    sns.boxplot(data=df, x="Class", y="Theta(t=0.5)", ax=ax, palette="Set2")
+    ax.set_title("Distribution of Theta(t=0.5) per Class")
+    ax.set_xlabel("Class")
+    ax.set_ylabel("Theta(t=0.5)")
     ax.tick_params(axis="x", rotation=45)
 
     plt.tight_layout()
@@ -138,21 +151,29 @@ def plot_theta_distribution(theta_matrix, y, labels, output_dir):
 
 def plot_memory_comparison(sparse_results, output_dir):
     """
-    Figure 5: Bar chart — Memory usage with/without sparse optimization.
+    Figure 5: Grouped bar chart — Memory usage with/without sparse optimization.
     """
     setup_plot_style()
     df = pd.DataFrame(sparse_results)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for filt in df["filter"].unique():
-        sub = df[df["filter"] == filt]
-        ax.bar([f"{s:.0%}" for s in sub["sparsity"]], sub["memory_mb"],
-               label=filt, alpha=0.8)
+    # Pivot to side-by-side bars
+    pivot = df.pivot_table(index="sparsity", columns="filter", values="memory_mb", aggfunc="mean")
+    x = np.arange(len(pivot))
+    width = 0.35
 
+    fig, ax = plt.subplots(figsize=(10, 6))
+    cols = pivot.columns.tolist()
+    colors = sns.color_palette("Set2", len(cols))
+    for i, col in enumerate(cols):
+        ax.bar(x + i * width, pivot[col].values, width,
+               label=col, alpha=0.85, color=colors[i])
+
+    ax.set_xticks(x + width / 2)
+    ax.set_xticklabels([f"{s:.0%}" for s in pivot.index])
     ax.set_xlabel("Sparsity Level")
     ax.set_ylabel("Peak Memory (MB)")
     ax.set_title("Memory Usage: With vs Without Sparse Filtering")
-    ax.legend()
+    ax.legend(title="Filter")
 
     plt.tight_layout()
     path = Path(output_dir) / "plots" / "memory_comparison.png"
@@ -168,7 +189,7 @@ def save_results_csv(classification_results, efficiency_results, sparse_results,
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    # Classification results
+    # Classification results — exclude non-serializable fields
     cls_rows = []
     for r in classification_results:
         cls_rows.append({
@@ -186,6 +207,10 @@ def save_results_csv(classification_results, efficiency_results, sparse_results,
     pd.DataFrame(efficiency_results).to_csv(out / "results_efficiency.csv", index=False)
     print(f"[CSV] Saved: {out / 'results_efficiency.csv'}")
 
-    # Sparse results
-    pd.DataFrame(sparse_results).to_csv(out / "results_sparse.csv", index=False)
+    # Sparse results — exclude non-scalar fields if any
+    sparse_rows = [
+        {k: v for k, v in row.items() if not isinstance(v, np.ndarray)}
+        for row in sparse_results
+    ]
+    pd.DataFrame(sparse_rows).to_csv(out / "results_sparse.csv", index=False)
     print(f"[CSV] Saved: {out / 'results_sparse.csv'}")
