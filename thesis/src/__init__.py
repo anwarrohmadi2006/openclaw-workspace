@@ -1,12 +1,19 @@
-# Theta-Augmented Gradient Boosting Embeddings for Tabular Similarity Research
-# Based on Bar-Natan & van der Veen (2025) - arXiv:2509.18456
-# "A Fast, Strong, Topologically Meaningful and Fun Knot Invariant"
+"""
+thesis/src — Theta-Augmented GBT Pipeline modules
 
-__version__ = "0.2.0"
-
-# Exposed public API
-from .braid_word import row_to_braid_word, generate_braid_words
-from .braid_utils import BraidClosure, braid_word_to_closure, validate_braid_words_batch, n_strands_from_feature_order
-from .theta_eval import compute_theta_features, theta_eval
-from .theta_exact import compute_exact_theta_features, alexander_polynomial_eval
-from .similarity_search import run_full_similarity_benchmark
+Module load order reflects pipeline execution order:
+    1. data_loader       — Step 1:  Load & preprocess
+    2. feature_ordering  — Step 2:  Feature ordering (3 strategies)
+    3. braid_word        — Step 3:  Braid word generation
+    4. braid_closure     — Step 3b: Braid closure (trace closure)
+    5. theta_eval        — Step 4:  Approximate Theta (linear)
+    6. alexander         — Step 4b: Exact Theta (Alexander matrix)
+    7. sparse_handler    — Step 5:  Sparse feature filtering
+    8. feature_augment   — Step 6:  Feature augmentation
+    9. model_training    — Step 7:  LGBM training & classification metrics
+   10. recall_eval       — Step 7b: 3-condition Recall@k evaluation
+   11. ann_baselines     — Step 7c: ANN baselines (HNSW, Annoy)
+   12. efficiency_benchmark — Step 8: Computational efficiency
+   13. sparsity_ablation    — Step 9: Sparsity ablation
+   14. visualization        — Step 10: Plots & CSV reporting
+"""
