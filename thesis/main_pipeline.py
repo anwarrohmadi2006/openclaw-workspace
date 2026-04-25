@@ -1,7 +1,8 @@
 """
 Main Pipeline — run_full_benchmark(dataset_name)
 Theta-Augmented Gradient Boosting Embeddings for Tabular Similarity Search
-Based on Bar-Natan & van der Veen (2019)
+Based on Bar-Natan & van der Veen (2025), arXiv:2509.18456
+"A Fast, Strong, Topologically Meaningful and Fun Knot Invariant"
 
 Usage:
     python main_pipeline.py              # Run all datasets
@@ -106,6 +107,7 @@ def run_full_benchmark(dataset_name, max_braid_samples=10000):
         braid_words, sample_idx = generate_braid_words(
             X_norm, order, max_samples=max_braid_samples
         )
+        # compute_theta_features now returns (N, 4): Theta(0.5), Theta(1/3), Theta(2/3), writhe
         theta_matrix = compute_theta_features(braid_words)
         theta_features[strategy_name] = theta_matrix
 
@@ -118,7 +120,6 @@ def run_full_benchmark(dataset_name, max_braid_samples=10000):
     print("─" * 50)
 
     # For augmentation, we need theta for ALL samples (train + test)
-    # Use the theta computed on full X_norm for each strategy
     X_augmented = {}
     for strategy_name in ["MI", "CorrCluster", "Default"]:
         order = {"MI": order_MI, "CorrCluster": order_corr, "Default": order_default}[strategy_name]
@@ -128,8 +129,9 @@ def run_full_benchmark(dataset_name, max_braid_samples=10000):
         theta_full = compute_theta_features(bws_full)
 
         # Pad with zeros if subsampled
+        n_theta_cols = theta_full.shape[1]  # now 4 columns
         if theta_full.shape[0] < X_norm.shape[0]:
-            theta_padded = np.zeros((X_norm.shape[0], 2))
+            theta_padded = np.zeros((X_norm.shape[0], n_theta_cols))
             theta_padded[:theta_full.shape[0]] = theta_full
             theta_full = theta_padded
 
@@ -158,7 +160,7 @@ def run_full_benchmark(dataset_name, max_braid_samples=10000):
         )
         r = evaluate_model(
             X_tr_aug, y_tr_aug, X_te_aug, y_te_aug, n_classes,
-            f"LGBM + Θ_{strategy_name}"
+            f"LGBM + Theta_{strategy_name}"
         )
         results_classification.append(r)
 
