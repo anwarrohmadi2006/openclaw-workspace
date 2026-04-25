@@ -20,32 +20,24 @@ def row_to_braid_word(row_values, feature_order):
 
     Process:
         1. Extract values in feature_order
-        2. Argsort to get permutation σ
-        3. Bubble sort with signed generators:
-           - sign = +1 if val[p[j]] > val[p[j+1]] (swap needed)
-           - sign = -1 otherwise
+        2. Start from identity permutation [0,1,...,d-1]
+        3. Bubble sort using actual feature values to determine swaps:
+           - sign = +1 if values[j] > values[j+1] (out of order, swap needed)
+           - sign = -1 if values[j] <= values[j+1] (in order, no swap)
     """
-    # Extract and argsort
     values = row_values[feature_order].astype(np.float64)
-    perm = np.argsort(values)  # ascending order indices
+    n = len(values)
+    p = np.arange(n)  # identity permutation
 
-    # Bubble sort decomposition with signs
     braid_word = []
-    p = perm.copy()
-    n = len(p)
-
     for i in range(n - 1, 0, -1):
         for j in range(i):
-            # Compare values at positions j and j+1
-            val_j = values[p[j]]
-            val_j1 = values[p[j + 1]]
-
-            if val_j > val_j1:
-                # Swap needed: positive generator
-                braid_word.append(j + 1)  # 1-indexed generator
+            if values[p[j]] > values[p[j + 1]]:
+                # Out of order: swap, positive generator
+                braid_word.append(j + 1)
                 p[j], p[j + 1] = p[j + 1], p[j]
             else:
-                # No swap: negative generator
+                # In order: no swap, negative generator
                 braid_word.append(-(j + 1))
 
     return braid_word

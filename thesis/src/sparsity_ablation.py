@@ -82,7 +82,8 @@ def ablation_sparsity(X, feature_order, sparsity_levels=None):
         })
 
         # With sparse filtering
-        X_filtered, adj_order, kept = filter_sparse_features(X_sparse, threshold=0.9, verbose=False)
+        X_filtered, kept = filter_sparse_features(X_sparse, threshold=0.9, verbose=False)
+        adj_order = np.array([i for i in range(X_filtered.shape[1])])
 
         tracemalloc.start()
         start = time.time()
