@@ -2,7 +2,14 @@
 Step 3 — Braid Word Generation
 Convert tabular row → permutation → signed braid word via bubble sort.
 
-Ref: Bar-Natan & van der Veen (2025), arXiv:2509.18456
+Definition (canonical):
+    A positive generator σ_j is recorded ONLY when the bubble sort makes a
+    swap at position j (i.e. values[p[j]] > values[p[j+1]]).
+    Non-swap positions are NOT recorded — they contribute no crossing.
+    This is the standard braid-word encoding used in topological data analysis.
+
+For the ablation variant that also records negative generators for
+non-swaps see `row_to_signed_braid_word()` below.
 """
 
 import numpy as np
@@ -10,24 +17,17 @@ import numpy as np
 
 def row_to_braid_word(row_values, feature_order):
     """
-    Convert a single row to a signed braid word.
+    Convert a single row to a braid word (positive generators only).
+
+    Only swap-positions are recorded as σ_j (positive integer j).
+    Non-swap positions are skipped — they produce no crossing in the braid.
 
     Args:
         row_values: 1D array of feature values for one sample
         feature_order: indices specifying feature ordering
 
     Returns:
-        list of signed integers representing braid generators
-        e.g. [1, -2, 3] — only crossings where swap occurs are recorded
-
-    Process:
-        1. Extract values in feature_order
-        2. Start from identity permutation [0,1,...,d-1]
-        3. Bubble sort: ONLY when values[p[j]] > values[p[j+1]]:
-           - sign = +1 (positive generator sigma_i)
-           - swap p[j] and p[j+1]
-           - append sign * (j+1) to braid_word
-        4. Non-swaps are NOT recorded — braid word only captures crossings
+        list of positive integers (braid generators), e.g. [1, 2, 1, 3]
     """
     values = row_values[feature_order].astype(np.float64)
     n = len(values)
@@ -37,21 +37,30 @@ def row_to_braid_word(row_values, feature_order):
     for i in range(n - 1, 0, -1):
         for j in range(i):
             if values[p[j]] > values[p[j + 1]]:
-                # Crossing occurs: record positive generator, then swap
+                # Out-of-order pair: record positive generator, then swap
                 braid_word.append(j + 1)
                 p[j], p[j + 1] = p[j + 1], p[j]
-            # No else — non-swaps are NOT part of the braid word
+            # In-order: no crossing, nothing recorded
 
     return braid_word
 
 
 def row_to_signed_braid_word(row_values, feature_order):
     """
-    Variant: signed braid word where crossing sign encodes
-    relative magnitude difference (positive if large > small).
+    Ablation variant: records BOTH positive and negative generators.
 
-    This captures richer information than unsigned braid word.
-    Use this variant when feature magnitudes are meaningful.
+    Every pair (j, j+1) at every pass produces a generator:
+        σ_j   (positive, j+1) if values[p[j]] > values[p[j+1]]  (swap)
+        σ_j⁻¹ (negative, -(j+1)) if values[p[j]] <= values[p[j+1]] (no swap)
+
+    Use this for ablation studies to compare against the canonical version.
+
+    Args:
+        row_values: 1D array of feature values
+        feature_order: feature ordering indices
+
+    Returns:
+        list of signed integers, e.g. [1, -2, 1, 3, -1]
     """
     values = row_values[feature_order].astype(np.float64)
     n = len(values)
@@ -61,13 +70,10 @@ def row_to_signed_braid_word(row_values, feature_order):
     for i in range(n - 1, 0, -1):
         for j in range(i):
             if values[p[j]] > values[p[j + 1]]:
-                # Positive generator: strand j crosses over strand j+1
-                braid_word.append(+(j + 1))
+                braid_word.append(j + 1)
                 p[j], p[j + 1] = p[j + 1], p[j]
-            elif values[p[j]] < values[p[j + 1]]:
-                # Negative generator: strand j+1 is dominant
+            else:
                 braid_word.append(-(j + 1))
-                # No swap since values are in order
 
     return braid_word
 
@@ -79,12 +85,15 @@ def generate_braid_words(X, feature_order, max_samples=None, signed=False):
     Args:
         X: feature matrix (N, d)
         feature_order: feature ordering indices
-        max_samples: limit number of samples (for large datasets)
-        signed: if True, use signed variant (captures magnitude info)
+        max_samples: optional int — limit rows (random subsample, seed=42)
+        signed: if True, use `row_to_signed_braid_word` (ablation variant)
 
     Returns:
-        (braid_words, sample_indices)
+        braid_words: list of lists
+        idx: array of row indices used (length = len(braid_words))
     """
+    encoder = row_to_signed_braid_word if signed else row_to_braid_word
+
     n = X.shape[0]
     if max_samples and n > max_samples:
         rng = np.random.RandomState(42)
@@ -96,16 +105,10 @@ def generate_braid_words(X, feature_order, max_samples=None, signed=False):
         X_sub = X
         idx = np.arange(n)
 
-    braid_fn = row_to_signed_braid_word if signed else row_to_braid_word
-
-    braid_words = []
-    total = X_sub.shape[0]
-    for i in range(total):
-        bw = braid_fn(X_sub[i], feature_order)
-        braid_words.append(bw)
+    braid_words = [encoder(X_sub[i], feature_order) for i in range(X_sub.shape[0])]
 
     lengths = [len(b) for b in braid_words]
-    print(f"[Braid] Generated {len(braid_words)} braid words | "
-          f"avg length: {np.mean(lengths):.1f} | "
-          f"max: {np.max(lengths)} | min: {np.min(lengths)}")
+    print(f"[Braid] Generated {len(braid_words)} braid words, "
+          f"avg length: {np.mean(lengths):.1f}, "
+          f"mode: {'signed' if signed else 'canonical'}")
     return braid_words, idx

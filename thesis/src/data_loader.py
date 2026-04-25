@@ -10,6 +10,19 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.datasets import fetch_openml
 
 
+def _safe_col_median(X: np.ndarray) -> np.ndarray:
+    """
+    Compute per-column median, falling back to 0.0 for all-NaN columns.
+    Avoids RuntimeWarning from np.nanmedian on fully-NaN slices.
+    """
+    medians = np.zeros(X.shape[1], dtype=np.float64)
+    for j in range(X.shape[1]):
+        col = X[:, j]
+        valid = col[~np.isnan(col)]
+        medians[j] = np.median(valid) if len(valid) > 0 else 0.0
+    return medians
+
+
 def load_har_dataset():
     """
     Load Human Activity Recognition dataset (561 features, ~10K rows, 6 classes).
@@ -22,8 +35,10 @@ def load_har_dataset():
     le = LabelEncoder()
     y = le.fit_transform(y_raw)
 
-    # Handle missing values
-    X = np.nan_to_num(X, nan=np.nanmedian(X, axis=0))
+    # Handle missing values — use safe per-column median
+    medians = _safe_col_median(X)
+    nan_mask = np.isnan(X)
+    X[nan_mask] = np.take(medians, np.where(nan_mask)[1])
 
     print(f"[HAR] X shape: {X.shape}, classes: {len(np.unique(y))}")
     return X, y, le.classes_, "HAR"
@@ -32,17 +47,14 @@ def load_har_dataset():
 def load_fraud_dataset():
     """
     Load Credit Card Fraud detection dataset.
-    Uses OpenML creditcard fraud (id=1597) — 284K rows, 30 features, binary.
+    Uses OpenML creditcard fraud — 284K rows, 30 features, binary.
     """
     try:
-        # Try OpenML first (Kaggle credit card fraud)
         fraud = fetch_openml('creditcard', version=1, as_frame=True, parser='auto')
         df = fraud.frame
-        # Last column is Class
         y_raw = df.iloc[:, -1].values
         X = df.iloc[:, :-1].values.astype(np.float64)
     except Exception:
-        # Fallback: generate synthetic imbalanced dataset
         print("[Fraud] OpenML failed, using synthetic imbalanced data")
         from sklearn.datasets import make_classification
         X, y_raw = make_classification(
@@ -55,7 +67,9 @@ def load_fraud_dataset():
     le = LabelEncoder()
     y = le.fit_transform(y_raw)
 
-    X = np.nan_to_num(X, nan=np.nanmedian(X, axis=0))
+    medians = _safe_col_median(X)
+    nan_mask = np.isnan(X)
+    X[nan_mask] = np.take(medians, np.where(nan_mask)[1])
 
     print(f"[Fraud] X shape: {X.shape}, classes: {len(np.unique(y))}, "
           f"imbalance ratio: {np.sum(y==0)/max(np.sum(y==1),1):.1f}:1")
